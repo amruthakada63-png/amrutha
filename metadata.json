@@ -1,0 +1,6 @@
+{
+  "name": "Eco alert",
+  "description": "CleanCity AI-powered civic issue reporting, automated waste detection, open-source location mapping, citizen complaint tracking, and municipal admin dashboard.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
