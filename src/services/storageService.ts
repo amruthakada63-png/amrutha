@@ -1,23 +1,48 @@
 import { CivicIssue, IssueStatus, CityAnalytics } from '../types';
 import { SAMPLE_ISSUES } from '../data/sampleIssues';
+import { calculatePriorityScore, verifyCleanup } from './intelligenceService';
 
-const STORAGE_KEY = 'eco_alert_civic_issues_v1';
+const STORAGE_KEY = 'eco_alert_civic_issues_v2';
 const UPDATE_EVENT = 'eco-alert-issues-updated';
 
 export const storageService = {
   getIssues(): CivicIssue[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
-      if (!data) {
-        this.saveIssues(SAMPLE_ISSUES);
-        return SAMPLE_ISSUES;
+      let list = SAMPLE_ISSUES;
+      if (data) {
+        const parsed = JSON.parse(data) as CivicIssue[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed;
+        }
       }
-      const parsed = JSON.parse(data) as CivicIssue[];
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        this.saveIssues(SAMPLE_ISSUES);
-        return SAMPLE_ISSUES;
-      }
-      return parsed;
+
+      // Ensure every issue has a priorityScore and cleanupVerification if resolved
+      const enriched = list.map(issue => {
+        let updated = issue;
+        if (issue.priorityScore === undefined) {
+          const priority = calculatePriorityScore({
+            category: issue.category,
+            severity: issue.severity,
+            severityScore: issue.severityScore,
+            upvotes: issue.upvotes,
+            createdAt: issue.createdAt,
+            hazards: issue.aiDetection?.sanitationHazards,
+            address: issue.location.address,
+            landmark: issue.location.landmark,
+          });
+          updated = { ...updated, priorityScore: priority.totalScore };
+        }
+        if (issue.status === 'resolved' && issue.resolvedImageUrl && !issue.cleanupVerification) {
+          updated = {
+            ...updated,
+            cleanupVerification: verifyCleanup(issue.imageUrl, issue.resolvedImageUrl, issue.category)
+          };
+        }
+        return updated;
+      });
+
+      return enriched;
     } catch {
       return SAMPLE_ISSUES;
     }
@@ -109,6 +134,11 @@ export const storageService = {
       author: options?.authorName || 'Municipal Authority',
     };
 
+    const resolvedUrl = options?.resolvedImageUrl !== undefined ? options?.resolvedImageUrl : issue.resolvedImageUrl;
+    const cleanupVerification = (newStatus === 'resolved' && resolvedUrl)
+      ? verifyCleanup(issue.imageUrl, resolvedUrl, issue.category)
+      : issue.cleanupVerification;
+
     const updatedIssue: CivicIssue = {
       ...issue,
       status: newStatus,
@@ -116,8 +146,9 @@ export const storageService = {
       assignedTeam: options?.assignedTeam !== undefined ? options?.assignedTeam : issue.assignedTeam,
       assignedOfficer: options?.assignedOfficer !== undefined ? options?.assignedOfficer : issue.assignedOfficer,
       adminNotes: options?.adminNotes !== undefined ? options?.adminNotes : issue.adminNotes,
-      resolvedImageUrl: options?.resolvedImageUrl !== undefined ? options?.resolvedImageUrl : issue.resolvedImageUrl,
+      resolvedImageUrl: resolvedUrl,
       resolutionProofNotes: options?.resolutionProofNotes !== undefined ? options?.resolutionProofNotes : issue.resolutionProofNotes,
+      cleanupVerification,
       timeline: [...issue.timeline, newTimelineEvent]
     };
 

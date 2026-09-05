@@ -108,7 +108,8 @@ export default function App() {
         {activeTab === 'report' && (
           <ReportIssuePage 
             prefillData={prefillReportData}
-            onIssueCreated={handleIssueCreated} 
+            onIssueCreated={handleIssueCreated}
+            onSelectIssueToTrack={handleSelectIssueToTrack}
           />
         )}
 

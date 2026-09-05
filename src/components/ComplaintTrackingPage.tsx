@@ -15,7 +15,13 @@ import {
   FileText,
   Printer,
   ChevronRight,
-  ArrowLeft
+  ArrowLeft,
+  AlertTriangle,
+  Star,
+  Flame,
+  ShieldAlert,
+  Gauge,
+  TrendingUp
 } from 'lucide-react';
 import { CivicIssue } from '../types';
 
@@ -35,6 +41,8 @@ export const ComplaintTrackingPage: React.FC<ComplaintTrackingPageProps> = ({
   const [searchInput, setSearchInput] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [activePhotoTab, setActivePhotoTab] = useState<'reported' | 'resolved' | 'compare'>('compare');
+  const [citizenRating, setCitizenRating] = useState<number | null>(null);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   // Find active issue or fallback to the first issue
   const currentIssue = selectedIssueId 
@@ -82,6 +90,15 @@ export const ComplaintTrackingPage: React.FC<ComplaintTrackingPageProps> = ({
     { num: 3, title: 'Clean-up In Progress', subtitle: 'Sanitation crew deployed' },
     { num: 4, title: 'Verified Resolved', subtitle: 'Cleanup proof submitted' },
   ];
+
+  // SLA Calculation
+  const elapsedHours = currentIssue ? Math.max(1, Math.floor((Date.now() - new Date(currentIssue.createdAt).getTime()) / (1000 * 3600))) : 0;
+  const slaTarget = currentIssue?.aiDetection?.estimatedFixHours || 24;
+  const isSlaBreached = currentIssue && currentIssue.status !== 'resolved' && elapsedHours > slaTarget;
+  const isSlaWarning = currentIssue && currentIssue.status !== 'resolved' && !isSlaBreached && elapsedHours > (slaTarget * 0.7);
+
+  // Priority Score Details
+  const priority = currentIssue?.priorityScore || 75;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
@@ -205,6 +222,77 @@ export const ComplaintTrackingPage: React.FC<ComplaintTrackingPageProps> = ({
                 Tracking Link Copied to Clipboard!
               </div>
             )}
+
+            {/* SLA ESCALATION ENGINE STATUS BANNER */}
+            {isSlaBreached ? (
+              <div className="p-4 bg-rose-50 border-b border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-start space-x-3">
+                  <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-extrabold text-rose-900 block sm:inline">
+                      🚨 AUTO-ESCALATION LEVEL 2 TRIGGERED: SLA Target Exceeded ({elapsedHours}h elapsed vs {slaTarget}h SLA).
+                    </strong>
+                    <span className="text-rose-700 block sm:inline sm:ml-1">
+                      Incident priority elevated. Zonal Municipal Commissioner and Chief Health Officer alerted for emergency crew dispatch.
+                    </span>
+                  </div>
+                </div>
+                <span className="self-start sm:self-auto px-2.5 py-1 rounded bg-rose-600 text-white font-black text-[10px] tracking-wider uppercase">
+                  Escalated Priority
+                </span>
+              </div>
+            ) : isSlaWarning ? (
+              <div className="p-4 bg-amber-50 border-b border-amber-200 flex items-center space-x-3 text-xs text-amber-900">
+                <Clock className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <strong className="font-bold">⏰ SLA Target Warning: </strong>
+                  <span>{elapsedHours}h elapsed of {slaTarget}h target. Escalation dispatch countdown active.</span>
+                </div>
+              </div>
+            ) : currentIssue.status !== 'resolved' ? (
+              <div className="px-6 py-2.5 bg-emerald-50/70 border-b border-emerald-100 flex items-center justify-between text-xs text-emerald-900">
+                <span className="flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Within SLA target window (Estimated completion: &lt; {slaTarget}h from filing).</span>
+                </span>
+                <span className="font-bold text-[11px] text-emerald-800">Normal SLA Flow</span>
+              </div>
+            ) : null}
+
+            {/* SMART PRIORITY SCORE STRIP */}
+            <div className="px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-1.5 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
+                  <Gauge className="w-4 h-4 text-rose-400" />
+                  <span className="text-slate-400 font-medium">Smart Priority:</span>
+                  <span className="font-black text-rose-400 text-sm">{priority}/100</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                  priority >= 80 ? 'bg-rose-500 text-white' : priority >= 60 ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-white'
+                }`}>
+                  {priority >= 80 ? 'High Priority Triage' : priority >= 60 ? 'Medium Priority' : 'Standard Queue'}
+                </span>
+              </div>
+
+              {/* Priority weights summary */}
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  Severity: <strong className="text-slate-200">40%</strong>
+                </span>
+                <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  Upvotes: <strong className="text-slate-200">20%</strong>
+                </span>
+                <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  Aging: <strong className="text-slate-200">15%</strong>
+                </span>
+                <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  Hazard: <strong className="text-slate-200">15%</strong>
+                </span>
+                <span className="bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700">
+                  Density: <strong className="text-slate-200">10%</strong>
+                </span>
+              </div>
+            </div>
 
             {/* 4-STAGE LIFECYCLE PROGRESS BAR */}
             <div className="p-6 bg-slate-50 border-b border-slate-200">
@@ -370,6 +458,32 @@ export const ComplaintTrackingPage: React.FC<ComplaintTrackingPageProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* AI CLEANUP VERIFICATION CARD (FEATURE 7) */}
+                {currentIssue.cleanupVerification && (
+                  <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 text-xs space-y-2.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span className="font-extrabold text-emerald-950 text-xs">
+                          AI Cleanup Invariance Verification
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-emerald-600 text-white font-black text-[10px]">
+                        {currentIssue.cleanupVerification.matchScore}% Match Score
+                      </span>
+                    </div>
+
+                    <p className="text-emerald-900 text-[11px] leading-relaxed">
+                      AI computer vision comparison confirmed thorough waste removal. Object footprint analysis verified 0% residual blockage against initial report photo.
+                    </p>
+
+                    <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[10px] text-emerald-800">
+                      <span>Verified: <strong>{currentIssue.cleanupVerification.verifiedBy}</strong></span>
+                      <span>{new Date(currentIssue.cleanupVerification.verifiedAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Right Column: Complete Chronological Activity Log */}
@@ -430,6 +544,50 @@ export const ComplaintTrackingPage: React.FC<ComplaintTrackingPageProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Citizen Resolution Feedback (When Resolved) */}
+                {currentIssue.status === 'resolved' && (
+                  <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 text-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-amber-950 flex items-center space-x-1.5">
+                        <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                        <span>Citizen Resolution Feedback</span>
+                      </span>
+                      {feedbackSubmitted && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                          Feedback Recorded ✓
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-amber-900 text-[11px]">
+                      Has the site been restored to your satisfaction? Rate the cleanup quality to contribute to the Ward Cleanliness Index.
+                    </p>
+
+                    <div className="flex items-center space-x-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => {
+                            setCitizenRating(star);
+                            setFeedbackSubmitted(true);
+                          }}
+                          className={`p-1.5 rounded-lg border transition-all ${
+                            (citizenRating || 0) >= star
+                              ? 'bg-amber-400 border-amber-500 text-slate-950 scale-105'
+                              : 'bg-white border-slate-200 text-slate-400 hover:text-amber-500'
+                          }`}
+                        >
+                          <Star className="w-4 h-4 fill-current" />
+                        </button>
+                      ))}
+                      <span className="text-[11px] font-bold text-slate-700 ml-2">
+                        {citizenRating ? `${citizenRating} / 5 Stars` : 'Tap to rate'}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

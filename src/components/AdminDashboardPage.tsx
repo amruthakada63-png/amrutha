@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   ShieldCheck, 
   CheckCircle2, 
@@ -18,10 +18,20 @@ import {
   PlusCircle,
   ExternalLink,
   Flame,
-  Check
+  Check,
+  Gauge,
+  Trophy,
+  Sparkles,
+  TrendingUp,
+  BarChart3,
+  ListFilter,
+  AlertCircle
 } from 'lucide-react';
-import { CivicIssue, IssueStatus, CityAnalytics } from '../types';
+import { CivicIssue, IssueStatus, CityAnalytics, WardCleanlinessRecord } from '../types';
 import { storageService } from '../services/storageService';
+import { calculateWardCleanliness } from '../services/intelligenceService';
+import { WardCleanlinessView } from './WardCleanlinessView';
+import { PriorityQueueView } from './PriorityQueueView';
 
 interface AdminDashboardPageProps {
   issues: CivicIssue[];
@@ -36,11 +46,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   onRefreshData,
   onSelectIssueToTrack,
 }) => {
+  // Navigation tabs
+  const [adminViewTab, setAdminViewTab] = useState<'operations' | 'priority_queue' | 'ward_index'>('operations');
+
   // Table search & filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<'date' | 'severity' | 'upvotes'>('date');
+  const [sortBy, setSortBy] = useState<'date' | 'severity' | 'upvotes' | 'priority'>('priority');
 
   // Modal State for Updating Issue
   const [selectedIssueForEdit, setSelectedIssueForEdit] = useState<CivicIssue | null>(null);
@@ -52,6 +65,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const [editProofNotes, setEditProofNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Ward Cleanliness Calculation
+  const wardIndexData = useMemo(() => calculateWardCleanliness(issues), [issues]);
 
   // Filtered and sorted table records
   const processedIssues = issues
@@ -68,6 +84,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       return true;
     })
     .sort((a, b) => {
+      if (sortBy === 'priority') {
+        return (b.priorityScore || 70) - (a.priorityScore || 70);
+      }
       if (sortBy === 'severity') {
         return b.severityScore - a.severityScore;
       }
@@ -76,6 +95,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+
+  // Priority Queue: pending issues sorted by priority score
+  const priorityQueueIssues = useMemo(() => {
+    return issues
+      .filter(i => i.status !== 'resolved')
+      .sort((a, b) => (b.priorityScore || 70) - (a.priorityScore || 70));
+  }, [issues]);
 
   // Open modal
   const handleOpenEditModal = (issue: CivicIssue) => {
@@ -257,225 +283,307 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         </div>
       </div>
 
-      {/* ANALYTICS BREAKDOWN: CATEGORIES & SEVERITY */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Category Breakdown Bar Chart */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Issue Category Distribution
-          </h3>
+      {/* MUNICIPAL SUB-NAVIGATION TABS */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setAdminViewTab('operations')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            adminViewTab === 'operations'
+              ? 'bg-emerald-700 text-white shadow-xs'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Operations &amp; Master Grid</span>
+        </button>
 
-          <div className="space-y-2.5 pt-1">
-            {Object.entries(analytics.categoryBreakdown).map(([cat, count]) => {
-              const numericCount = Number(count) || 0;
-              const pct = Math.round((numericCount / (analytics.totalReports || 1)) * 100);
-              return (
-                <div key={cat} className="space-y-1">
-                  <div className="flex justify-between text-xs font-medium">
-                    <span className="text-slate-700 capitalize">{cat.replace('_', ' ')}</span>
-                    <span className="text-slate-500 font-mono">{numericCount} ({pct}%)</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
-                      style={{ width: `${Math.max(pct, 8)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setAdminViewTab('priority_queue')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            adminViewTab === 'priority_queue'
+              ? 'bg-rose-700 text-white shadow-xs'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Gauge className="w-3.5 h-3.5" />
+          <span>AI Priority Dispatch Queue</span>
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+            adminViewTab === 'priority_queue' ? 'bg-rose-900 text-white' : 'bg-rose-100 text-rose-800'
+          }`}>
+            {priorityQueueIssues.length}
+          </span>
+        </button>
 
-        {/* Operational Dispatch Guidelines */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Municipal Operational Directives
-          </h3>
-
-          <div className="space-y-3 text-xs text-slate-600">
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200">
-              <strong className="text-rose-900 block font-bold">Critical Priority (SLA 4-6 Hours):</strong>
-              <p className="text-rose-800 mt-0.5">
-                Hazardous chemicals, open hospital waste, or severe drain clogs threatening flash flooding. Require immediate supervisor dispatch.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
-              <strong className="text-amber-900 block font-bold">High Priority (SLA 12-18 Hours):</strong>
-              <p className="text-amber-800 mt-0.5">
-                Heavy roadside dumpster overflow and illegal construction rubble blocking pedestrian sidewalks. Compactor truck requisitioned.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-              <strong className="text-emerald-900 block font-bold">Standard Resolution Verification:</strong>
-              <p className="text-emerald-800 mt-0.5">
-                Every closed issue requires a post-cleanup photograph to unlock resolution status and citizen notification.
-              </p>
-            </div>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => setAdminViewTab('ward_index')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            adminViewTab === 'ward_index'
+              ? 'bg-purple-700 text-white shadow-xs'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5" />
+          <span>Ward Cleanliness Index</span>
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+            adminViewTab === 'ward_index' ? 'bg-purple-900 text-white' : 'bg-purple-100 text-purple-800'
+          }`}>
+            {wardIndexData.length} Wards
+          </span>
+        </button>
       </div>
 
-      {/* MASTER DATA TABLE */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
-        {/* Table Toolbar */}
-        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
-          <div className="relative flex-1 w-full sm:max-w-xs">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Search table..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white text-slate-900"
-            />
-          </div>
+      {/* CONDITIONAL TAB CONTENT */}
+      {adminViewTab === 'priority_queue' ? (
+        <PriorityQueueView
+          issues={priorityQueueIssues}
+          onOpenEditModal={handleOpenEditModal}
+          onSelectIssueToTrack={onSelectIssueToTrack}
+        />
+      ) : adminViewTab === 'ward_index' ? (
+        <WardCleanlinessView wardData={wardIndexData} />
+      ) : (
+        <div className="space-y-8">
+          {/* ANALYTICS BREAKDOWN: CATEGORIES & SEVERITY */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Category Breakdown Bar Chart */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Issue Category Distribution
+              </h3>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
-            >
-              <option value="all">All Statuses</option>
-              <option value="reported">Reported</option>
-              <option value="under_review">Under Review</option>
-              <option value="in_progress">In Progress</option>
-              <option value="resolved">Resolved</option>
-            </select>
-
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
-            >
-              <option value="all">All Categories</option>
-              <option value="garbage_overflow">Garbage Overflow</option>
-              <option value="illegal_dumping">Illegal Dumping</option>
-              <option value="blocked_drain">Blocked Drain</option>
-              <option value="unclean_public_space">Unclean Space</option>
-              <option value="broken_bin">Broken Bin</option>
-              <option value="hazardous_waste">Hazardous Waste</option>
-            </select>
-
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
-            >
-              <option value="date">Sort by Date</option>
-              <option value="severity">Sort by Severity</option>
-              <option value="upvotes">Sort by Upvotes</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Table Grid */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-3">Report ID</th>
-                <th className="px-4 py-3">Evidence</th>
-                <th className="px-4 py-3">Issue Title & Ward</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">AI Urgency</th>
-                <th className="px-4 py-3">Current Status</th>
-                <th className="px-4 py-3">Assigned Crew</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {processedIssues.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
-                    No civic records found matching current query.
-                  </td>
-                </tr>
-              ) : (
-                processedIssues.map((issue) => (
-                  <tr key={issue.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-4 py-3 font-extrabold text-slate-900 font-mono">
-                      {issue.id}
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <div className="w-12 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
-                        <img
-                          src={issue.imageUrl}
-                          alt="Thumbnail"
-                          className="w-full h-full object-cover"
+              <div className="space-y-2.5 pt-1">
+                {Object.entries(analytics.categoryBreakdown).map(([cat, count]) => {
+                  const numericCount = Number(count) || 0;
+                  const pct = Math.round((numericCount / (analytics.totalReports || 1)) * 100);
+                  return (
+                    <div key={cat} className="space-y-1">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-slate-700 capitalize">{cat.replace('_', ' ')}</span>
+                        <span className="text-slate-500 font-mono">{numericCount} ({pct}%)</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                          style={{ width: `${Math.max(pct, 8)}%` }}
                         />
                       </div>
-                    </td>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-                    <td className="px-4 py-3 max-w-xs">
-                      <strong className="block text-slate-900 font-bold truncate">{issue.title}</strong>
-                      <span className="text-[11px] text-slate-500 block truncate">📍 {issue.location.address} ({issue.location.ward})</span>
-                    </td>
+            {/* Operational Dispatch Guidelines */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Municipal Operational Directives
+              </h3>
 
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold capitalize truncate block max-w-[130px]">
-                        {issue.category.replace('_', ' ')}
-                      </span>
-                    </td>
+              <div className="space-y-3 text-xs text-slate-600">
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200">
+                  <strong className="text-rose-900 block font-bold">Critical Priority (SLA 4-6 Hours):</strong>
+                  <p className="text-rose-800 mt-0.5">
+                    Hazardous chemicals, open hospital waste, or severe drain clogs threatening flash flooding. Require immediate supervisor dispatch.
+                  </p>
+                </div>
 
-                    <td className="px-4 py-3">
-                      <div className="flex items-center space-x-1.5">
-                        <span className={`w-2 h-2 rounded-full ${
-                          issue.severity === 'critical' ? 'bg-rose-600' : issue.severity === 'high' ? 'bg-orange-500' : 'bg-amber-400'
-                        }`} />
-                        <span className="font-bold text-slate-800 capitalize">{issue.severity}</span>
-                        <span className="text-[10px] text-slate-400">({issue.severityScore})</span>
-                      </div>
-                    </td>
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <strong className="text-amber-900 block font-bold">High Priority (SLA 12-18 Hours):</strong>
+                  <p className="text-amber-800 mt-0.5">
+                    Heavy roadside dumpster overflow and illegal construction rubble blocking pedestrian sidewalks. Compactor truck requisitioned.
+                  </p>
+                </div>
 
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
-                        issue.status === 'resolved'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : issue.status === 'in_progress'
-                          ? 'bg-amber-100 text-amber-800'
-                          : issue.status === 'under_review'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {issue.status.replace('_', ' ')}
-                      </span>
-                    </td>
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                  <strong className="text-emerald-900 block font-bold">Standard Resolution Verification:</strong>
+                  <p className="text-emerald-800 mt-0.5">
+                    Every closed issue requires a post-cleanup photograph to unlock resolution status and citizen notification.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-[140px]">
-                      {issue.assignedTeam || <span className="text-slate-400 italic">Unassigned</span>}
-                    </td>
+          {/* MASTER DATA TABLE */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
+            {/* Table Toolbar */}
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
+              <div className="relative flex-1 w-full sm:max-w-xs">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search table..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white text-slate-900"
+                />
+              </div>
 
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(issue)}
-                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold transition-colors"
-                        >
-                          Manage
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onSelectIssueToTrack(issue.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-slate-900 transition-colors"
-                          title="View public tracking page"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="reported">Reported</option>
+                  <option value="under_review">Under Review</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="garbage_overflow">Garbage Overflow</option>
+                  <option value="illegal_dumping">Illegal Dumping</option>
+                  <option value="blocked_drain">Blocked Drain</option>
+                  <option value="unclean_public_space">Unclean Space</option>
+                  <option value="broken_bin">Broken Bin</option>
+                  <option value="hazardous_waste">Hazardous Waste</option>
+                </select>
+
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 font-medium"
+                >
+                  <option value="priority">Sort by AI Priority</option>
+                  <option value="date">Sort by Date</option>
+                  <option value="severity">Sort by Severity</option>
+                  <option value="upvotes">Sort by Upvotes</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Table Grid */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="px-4 py-3">Report ID</th>
+                    <th className="px-4 py-3">Evidence</th>
+                    <th className="px-4 py-3">Issue Title &amp; Ward</th>
+                    <th className="px-4 py-3">Category</th>
+                    <th className="px-4 py-3">AI Priority</th>
+                    <th className="px-4 py-3">Severity</th>
+                    <th className="px-4 py-3">Current Status</th>
+                    <th className="px-4 py-3">Assigned Crew</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {processedIssues.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                        No civic records found matching current query.
+                      </td>
+                    </tr>
+                  ) : (
+                    processedIssues.map((issue) => (
+                      <tr key={issue.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-extrabold text-slate-900 font-mono">
+                          {issue.id}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="w-12 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                            <img
+                              src={issue.imageUrl}
+                              alt="Thumbnail"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3 max-w-xs">
+                          <strong className="block text-slate-900 font-bold truncate">{issue.title}</strong>
+                          <span className="text-[11px] text-slate-500 block truncate">📍 {issue.location.address} ({issue.location.ward})</span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold capitalize truncate block max-w-[130px]">
+                            {issue.category.replace('_', ' ')}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex items-center space-x-1.5">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                              (issue.priorityScore || 70) >= 80
+                                ? 'bg-rose-100 text-rose-800'
+                                : (issue.priorityScore || 70) >= 60
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {issue.priorityScore || 70}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">/100</span>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex items-center space-x-1.5">
+                            <span className={`w-2 h-2 rounded-full ${
+                              issue.severity === 'critical' ? 'bg-rose-600' : issue.severity === 'high' ? 'bg-orange-500' : 'bg-amber-400'
+                            }`} />
+                            <span className="font-bold text-slate-800 capitalize">{issue.severity}</span>
+                            <span className="text-[10px] text-slate-400">({issue.severityScore})</span>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[10px] ${
+                            issue.status === 'resolved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : issue.status === 'in_progress'
+                              ? 'bg-amber-100 text-amber-800'
+                              : issue.status === 'under_review'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {issue.status.replace('_', ' ')}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-slate-600 truncate max-w-[140px]">
+                          {issue.assignedTeam || <span className="text-slate-400 italic">Unassigned</span>}
+                        </td>
+
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(issue)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold transition-colors"
+                            >
+                              Manage
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onSelectIssueToTrack(issue.id)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-slate-900 transition-colors"
+                              title="View public tracking page"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* EDIT MODAL */}
       {selectedIssueForEdit && (

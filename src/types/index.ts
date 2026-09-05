@@ -58,6 +58,7 @@ export interface CivicIssue {
   category: IssueCategory;
   severity: IssueSeverity;
   severityScore: number;
+  priorityScore?: number;
   status: IssueStatus;
   imageUrl: string;
   resolvedImageUrl?: string;
@@ -78,6 +79,75 @@ export interface CivicIssue {
   createdAt: string;
   updatedAt: string;
   timeline: TimelineEvent[];
+  cleanupVerification?: CleanupVerificationResult;
+}
+
+export interface PriorityBreakdown {
+  totalScore: number;
+  priorityLevel: 'critical' | 'high' | 'medium' | 'low';
+  factors: {
+    aiSeverity: { score: number; weighted: number; weight: number };
+    citizenVotes: { score: number; count: number; weighted: number; weight: number };
+    complaintAge: { hours: number; score: number; weighted: number; weight: number };
+    hazardRisk: { score: number; hazards: string[]; weighted: number; weight: number };
+    sensitiveArea: { isSensitive: boolean; detectedTags: string[]; score: number; weighted: number; weight: number };
+  };
+  recommendation: string;
+  isImmediateAttentionRecommended: boolean;
+}
+
+export interface PossibleDuplicateMatch {
+  existingIssue: CivicIssue;
+  distanceMeters: number;
+  similarityPercent: number;
+  reportedHoursAgo: number;
+  isHighProbability: boolean;
+}
+
+export interface ClusterIncident {
+  id: string;
+  ward: string;
+  zone: string;
+  centerLat: number;
+  centerLng: number;
+  radiusMeters: number;
+  issues: CivicIssue[];
+  primaryCategory: IssueCategory;
+  primaryCategoryLabel: string;
+  averagePriority: number;
+  criticalCount: number;
+  recommendedAction: string;
+}
+
+export interface WardCleanlinessRecord {
+  ward: string;
+  zone: string;
+  cleanlinessScore: number; // 0 to 100
+  status: 'Excellent' | 'Good' | 'Needs Attention' | 'Critical';
+  totalComplaints: number;
+  resolvedComplaints: number;
+  activeComplaints: number;
+  resolutionRatePercent: number;
+  avgResponseHours: number;
+  criticalCount: number;
+  isCleanest?: boolean;
+  isMostAttentionRequired?: boolean;
+}
+
+export interface ResolutionPrediction {
+  predictedHours: number;
+  confidencePercent: number;
+  factors: Array<{ label: string; impactHours: number }>;
+  recommendedTeam: string;
+}
+
+export interface CleanupVerificationResult {
+  beforeWastePresencePercent: number;
+  afterWastePresencePercent: number;
+  cleanupConfidencePercent: number;
+  wasteReductionPercent: number;
+  isVerified: boolean;
+  statusNote: string;
 }
 
 export interface FilterOptions {
